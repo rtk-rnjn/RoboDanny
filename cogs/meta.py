@@ -203,7 +203,7 @@ class PaginatedHelpCommand(commands.HelpCommand):
                 fmt = f'{parent} {fmt}'
             alias = fmt
         else:
-            alias = command.name if not parent else f'{parent} {command.name}'
+            alias = f'{parent} {command.name}' if parent else command.name
         return f'{alias} {command.signature}'
 
     async def send_bot_help(self, mapping):
@@ -497,7 +497,7 @@ class Meta(commands.Cog):
         if guild_id is not None and await self.bot.is_owner(ctx.author):
             guild = self.bot.get_guild(guild_id)
             if guild is None:
-                return await ctx.send(f'Invalid Guild ID given.')
+                return await ctx.send('Invalid Guild ID given.')
         else:
             guild = ctx.guild
 
@@ -534,18 +534,16 @@ class Meta(commands.Cog):
             discord.VoiceChannel: '<:voice_channel:586339098524909604>',
         }
         for key, total in totals.items():
-            secrets = secret[key]
             try:
                 emoji = key_to_emoji[key]
             except KeyError:
                 continue
 
-            if secrets:
+            if secrets := secret[key]:
                 channel_info.append(f'{emoji} {total} ({secrets} locked)')
             else:
                 channel_info.append(f'{emoji} {total}')
 
-        info = []
         features = set(guild.features)
         all_features = {
             'PARTNERED': 'Partnered',
@@ -564,11 +562,11 @@ class Meta(commands.Cog):
             'BANNER': 'Banner',
         }
 
-        for feature, label in all_features.items():
-            if feature in features:
-                info.append(f'{ctx.tick(True)}: {label}')
-
-        if info:
+        if info := [
+            f'{ctx.tick(True)}: {label}'
+            for feature, label in all_features.items()
+            if feature in features
+        ]:
             e.add_field(name='Features', value='\n'.join(info))
 
         e.add_field(name='Channels', value='\n'.join(channel_info))

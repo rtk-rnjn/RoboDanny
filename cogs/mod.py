@@ -132,10 +132,8 @@ class ActionReason(commands.Converter):
         return ret
 
 def safe_reason_append(base, to_append):
-    appended = base + f'({to_append})'
-    if len(appended) > 512:
-        return base
-    return appended
+    appended = f'{base}({to_append})'
+    return base if len(appended) > 512 else appended
 
 ## Spam detector
 
@@ -194,10 +192,7 @@ class SpamChecker:
             return True
 
         content_bucket = self.by_content.get_bucket(message)
-        if content_bucket.update_rate_limit(current):
-            return True
-
-        return False
+        return bool(content_bucket.update_rate_limit(current))
 
     def is_fast_join(self, member):
         joined = member.joined_at or discord.utils.utcnow()
@@ -271,7 +266,11 @@ class Mod(commands.Cog):
         self.bulk_send_messages.stop()
 
     async def cog_command_error(self, ctx, error):
-        if isinstance(error, commands.BadArgument):
+        if (
+            isinstance(error, commands.BadArgument)
+            or not isinstance(error, commands.CommandInvokeError)
+            and isinstance(error, NoMuteRole)
+        ):
             await ctx.send(error)
         elif isinstance(error, commands.CommandInvokeError):
             original = error.original
@@ -281,8 +280,6 @@ class Mod(commands.Cog):
                 await ctx.send(f'This entity does not exist: {original.text}')
             elif isinstance(original, discord.HTTPException):
                 await ctx.send('Somehow, an unexpected error occurred. Try again later?')
-        elif isinstance(error, NoMuteRole):
-            await ctx.send(error)
 
     async def bulk_insert(self):
         query = """UPDATE guild_mod_config
@@ -650,7 +647,7 @@ class Mod(commands.Cog):
     async def _basic_cleanup_strategy(self, ctx, search):
         count = 0
         async for msg in ctx.history(limit=search, before=ctx.message):
-            if msg.author == ctx.me and not (msg.mentions or msg.role_mentions):
+            if msg.author == ctx.me and not msg.mentions and not msg.role_mentions:
                 await msg.delete()
                 count += 1
         return { 'Bot': count }
@@ -668,7 +665,12 @@ class Mod(commands.Cog):
         prefixes = tuple(self.bot.get_guild_prefixes(ctx.guild))
 
         def check(m):
-            return (m.author == ctx.me or m.content.startswith(prefixes)) and not (m.mentions or m.role_mentions)
+            return (
+                ((m.author == ctx.me or m.content.startswith(prefixes)))
+                and not m.mentions
+                and not m.role_mentions
+            )
+
 
         deleted = await ctx.channel.purge(limit=search, check=check, before=ctx.message)
         return Counter(m.author.display_name for m in deleted)
@@ -697,11 +699,7 @@ class Mod(commands.Cog):
             else:
                 strategy = self._regular_user_cleanup_strategy
 
-        if is_mod:
-            search = min(max(2, search), 1000)
-        else:
-            search = min(max(2, search), 25)
-
+        search = min(max(2, search), 1000) if is_mod else min(max(2, search), 25)
         spammers = await strategy(ctx, search)
         deleted = sum(spammers.values())
         messages = [f'{deleted} message{" was" if deleted == 1 else "s were"} removed.']
@@ -939,7 +937,7 @@ class Mod(commands.Cog):
             predicates.append(joined_before)
 
         members = {m for m in members if all(p(m) for p in predicates)}
-        if len(members) == 0:
+        if not members:
             return await ctx.send('No members found matching criteria.')
 
         if args.show:
@@ -1151,7 +1149,7 @@ class Mod(commands.Cog):
                    WHERE id = $1;
                 """
 
-        if len(channels) == 0:
+        if not channels:
             return await ctx.send('Missing channels to ignore.')
 
         channel_ids = [c.id for c in channels]
@@ -1168,7 +1166,7 @@ class Mod(commands.Cog):
         To use this command you must have the Ban Members permission.
         """
 
-        if len(channels) == 0:
+        if not channels:
             return await ctx.send('Missing channels to protect.')
 
         query = """UPDATE guild_mod_config
@@ -1203,11 +1201,7 @@ class Mod(commands.Cog):
         if limit > 2000:
             return await ctx.send(f'Too many messages to search given ({limit}/2000)')
 
-        if before is None:
-            before = ctx.message
-        else:
-            before = discord.Object(id=before)
-
+        before = ctx.message if before is None else discord.Object(id=before)
         if after is not None:
             after = discord.Object(id=after)
 
@@ -1394,16 +1388,13 @@ class Mod(commands.Cog):
         if args.ends:
             predicates.append(lambda m: any(m.content.endswith(s) for s in args.ends))
 
-        op = all if not args._or else any
+        op = any if args._or else all
         def predicate(m):
             r = op(p(m) for p in predicates)
-            if args._not:
-                return not r
-            return r
+            return not r if args._not else r
 
-        if args.after:
-            if args.search is None:
-                args.search = 2000
+        if args.after and args.search is None:
+            args.search = 2000
 
         if args.search is None:
             args.search = 100

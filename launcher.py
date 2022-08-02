@@ -28,9 +28,10 @@ class RemoveNoise(logging.Filter):
         super().__init__(name='discord.state')
 
     def filter(self, record):
-        if record.levelname == 'WARNING' and 'referencing an unknown' in record.msg:
-            return False
-        return True
+        return (
+            record.levelname != 'WARNING'
+            or 'referencing an unknown' not in record.msg
+        )
 
 @contextlib.contextmanager
 def setup_logging():
@@ -102,10 +103,11 @@ def init(cogs, quiet):
         click.echo(f'Could not create PostgreSQL connection pool.\n{traceback.format_exc()}', err=True)
         return
 
-    if not cogs:
-        cogs = initial_extensions
-    else:
-        cogs = [f'cogs.{e}' if not e.startswith('cogs.') else e for e in cogs]
+    cogs = (
+        [e if e.startswith('cogs.') else f'cogs.{e}' for e in cogs]
+        if cogs
+        else initial_extensions
+    )
 
     for ext in cogs:
         try:
@@ -288,7 +290,7 @@ def convertjson(ctx, cogs):
         to_run = []
         for cog in cogs:
             try:
-                elem = getattr(data_migrators, 'migrate_' + cog)
+                elem = getattr(data_migrators, f'migrate_{cog}')
             except AttributeError:
                 click.echo(f'invalid cog name given, {cog}.', err=True)
                 return
@@ -317,7 +319,7 @@ def convertjson(ctx, cogs):
     except:
         pass
 
-    extensions = ['cogs.' + name for _, name in to_run]
+    extensions = [f'cogs.{name}' for _, name in to_run]
     ctx.invoke(init, cogs=extensions)
 
     for migrator, _ in to_run:

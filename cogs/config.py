@@ -20,9 +20,12 @@ class PlonkedPageSource(menus.AsyncIteratorPageSource):
 
     async def format_page(self, menu, entries):
         embed = discord.Embed(colour=discord.Colour.blurple())
-        pages = []
-        for index, entry in enumerate(entries, start=menu.current_page * self.per_page):
-            pages.append(f'{index + 1}. {entry}')
+        pages = [
+            f'{index + 1}. {entry}'
+            for index, entry in enumerate(
+                entries, start=menu.current_page * self.per_page
+            )
+        ]
 
         embed.description = '\n'.join(pages)
         return embed
@@ -193,13 +196,12 @@ class Config(commands.Cog):
         if channel is None:
             query = "SELECT 1 FROM plonks WHERE guild_id=$1 AND entity_id=$2;"
             row = await connection.fetchrow(query, guild_id, member_id)
+        elif isinstance(channel, discord.Thread):
+            query = "SELECT 1 FROM plonks WHERE guild_id=$1 AND entity_id IN ($2, $3, $4);"
+            row = await connection.fetchrow(query, guild_id, member_id, channel.id, channel.parent_id)
         else:
-            if isinstance(channel, discord.Thread):
-                query = "SELECT 1 FROM plonks WHERE guild_id=$1 AND entity_id IN ($2, $3, $4);"
-                row = await connection.fetchrow(query, guild_id, member_id, channel.id, channel.parent_id)
-            else:
-                query = "SELECT 1 FROM plonks WHERE guild_id=$1 AND entity_id IN ($2, $3);"
-                row = await connection.fetchrow(query, guild_id, member_id, channel.id)
+            query = "SELECT 1 FROM plonks WHERE guild_id=$1 AND entity_id IN ($2, $3);"
+            row = await connection.fetchrow(query, guild_id, member_id, channel.id)
 
         return row is not None
 
@@ -213,8 +215,7 @@ class Config(commands.Cog):
 
         # see if they can bypass:
         if isinstance(ctx.author, discord.Member):
-            bypass = ctx.author.guild_permissions.manage_guild
-            if bypass:
+            if bypass := ctx.author.guild_permissions.manage_guild:
                 return True
 
         # check if we're plonked
@@ -282,7 +283,7 @@ class Config(commands.Cog):
         To use this command you must have Manage Server permissions.
         """
 
-        if len(entities) == 0:
+        if not entities:
             # shortcut for a single insert
             query = "INSERT INTO plonks (guild_id, entity_id) VALUES ($1, $2) ON CONFLICT DO NOTHING;"
             await ctx.db.execute(query, ctx.guild.id, ctx.channel.id)
@@ -354,7 +355,7 @@ class Config(commands.Cog):
         To use this command you must have the Manage Server permission.
         """
 
-        if len(entities) == 0:
+        if not entities:
             query = "DELETE FROM plonks WHERE guild_id=$1 AND entity_id=$2;"
             await ctx.db.execute(query, ctx.guild.id, ctx.channel.id)
         else:
@@ -406,7 +407,12 @@ class Config(commands.Cog):
             try:
                 await connection.execute(query, guild_id, channel_id, name, whitelist)
             except asyncpg.UniqueViolationError:
-                msg = 'This command is already disabled.' if not whitelist else 'This command is already explicitly enabled.'
+                msg = (
+                    'This command is already explicitly enabled.'
+                    if whitelist
+                    else 'This command is already disabled.'
+                )
+
                 raise RuntimeError(msg)
 
     @channel.command(name='disable')

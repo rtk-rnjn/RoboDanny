@@ -96,10 +96,8 @@ def contributor_or_higher():
             return False
 
         role = discord.utils.find(lambda r: r.id == CONTRIBUTORS_ROLE, guild.roles)
-        if role is None:
-            return False
+        return False if role is None else ctx.author.top_role >= role
 
-        return ctx.author.top_role >= role
     return commands.check(predicate)
 
 class Feeds(db.Table):
@@ -240,7 +238,7 @@ class API(commands.Cog):
         cache = {}
         for key, page in page_types.items():
             sub = cache[key] = {}
-            async with self.bot.session.get(page + '/objects.inv') as resp:
+            async with self.bot.session.get(f'{page}/objects.inv') as resp:
                 if resp.status != 200:
                     raise RuntimeError('Cannot build rtfm lookup table, try again later.')
 
@@ -299,10 +297,9 @@ class API(commands.Cog):
         if ctx.guild is not None:
             #                             日本語 category
             if ctx.channel.category_id == 490287576670928914:
-                return prefix + '-jp'
-            #                    d.py unofficial JP   Discord Bot Portal JP
+                return f'{prefix}-jp'
             elif ctx.guild.id in (463986890190749698, 494911447420108820):
-                return prefix + '-jp'
+                return f'{prefix}-jp'
         return prefix
 
     @commands.group(aliases=['rtfd'], invoke_without_command=True)
@@ -343,11 +340,7 @@ class API(commands.Cog):
         query = 'SELECT count FROM rtfm WHERE user_id=$1;'
         record = await ctx.db.fetchrow(query, member.id)
 
-        if record is None:
-            count = 0
-        else:
-            count = record['count']
-
+        count = 0 if record is None else record['count']
         e.add_field(name='Uses', value=count)
         e.add_field(name='Percentage', value=f'{count/total_uses:.2%} out of {total_uses}')
         e.colour = discord.Colour.blurple()
@@ -366,9 +359,7 @@ class API(commands.Cog):
         query = 'SELECT user_id, count FROM rtfm ORDER BY count DESC LIMIT 10;'
         records = await ctx.db.fetch(query)
 
-        output = []
-        output.append(f'**Total uses**: {total_uses}')
-
+        output = [f'**Total uses**: {total_uses}']
         # first we get the most used users
         if records:
             output.append(f'**Top {len(records)} users**:')
@@ -553,7 +544,7 @@ class API(commands.Cog):
 
         name = name.lower()
 
-        if name in ('@everyone', '@here'):
+        if name in {'@everyone', '@here'}:
             return await ctx.send('That is an invalid feed name.')
 
         query = 'SELECT role_id FROM feeds WHERE channel_id=$1 AND name=$2;'
@@ -565,7 +556,7 @@ class API(commands.Cog):
 
         # create the role
         if ctx.guild.id == DISCORD_API_ID:
-            role_name = self.library_name(ctx.channel) + ' ' + name
+            role_name = f'{self.library_name(ctx.channel)} {name}'
         else:
             role_name = name
 
@@ -750,8 +741,8 @@ class API(commands.Cog):
             colour = discord.Colour.dark_green()
         elif emoji == '\N{NO ENTRY SIGN}':
             to_send = f"Your bot, <@{bot_id}>, could not be added to {channel.guild.name}.\n" \
-                       "This could be because it was private or required code grant. " \
-                       "Please make your bot public and resubmit your application."
+                           "This could be because it was private or required code grant. " \
+                           "Please make your bot public and resubmit your application."
             colour = discord.Colour.orange()
         else:
             to_send = f"Your bot, <@{bot_id}>, has been rejected from {channel.guild.name}."

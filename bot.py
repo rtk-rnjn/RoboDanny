@@ -46,8 +46,7 @@ def _prefix_callable(bot, msg):
     user_id = bot.user.id
     base = [f'<@!{user_id}> ', f'<@{user_id}> ']
     if msg.guild is None:
-        base.append('!')
-        base.append('?')
+        base.extend(('!', '?'))
     else:
         base.extend(bot.prefixes.get(msg.guild.id, ['?', '!']))
     return base
@@ -227,9 +226,7 @@ class RoboDanny(commands.AutoShardedBot):
                 return member
 
         members = await guild.query_members(limit=1, user_ids=[member_id], cache=True)
-        if not members:
-            return None
-        return members[0]
+        return members[0] if members else None
 
     async def resolve_member_ids(self, guild, member_ids):
         """Bulk resolves member IDs to member instances, if possible.
@@ -301,8 +298,7 @@ class RoboDanny(commands.AutoShardedBot):
     @discord.utils.cached_property
     def stats_webhook(self):
         wh_id, wh_token = self.config.stat_webhook
-        hook = discord.Webhook.partial(id=wh_id, token=wh_token, session=self.session)
-        return hook
+        return discord.Webhook.partial(id=wh_id, token=wh_token, session=self.session)
 
     def log_spammer(self, ctx, message, retry_after, *, autoblock=False):
         guild_name = getattr(ctx.guild, 'name', 'No Guild (DMs)')

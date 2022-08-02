@@ -133,7 +133,7 @@ class TagName(commands.clean_content):
         if first_word in root.all_commands:
             raise commands.BadArgument('This tag name starts with a reserved word.')
 
-        return converted if not self.lower else lower
+        return lower if self.lower else converted
 
 class FakeUser(discord.Object):
     class FakeAsset:
@@ -503,7 +503,7 @@ class Tags(commands.Cog):
 
         if len(records) < 3:
             # fill with data to ensure that we have a minimum of 3
-            records.extend((None, None, None, None) for i in range(0, 3 - len(records)))
+            records.extend((None, None, None, None) for i in range(3 - len(records)))
 
 
         def emojize(seq):
@@ -531,7 +531,7 @@ class Tags(commands.Cog):
 
         if len(records) < 3:
             # fill with data to ensure that we have a minimum of 3
-            records.extend((None, None) for i in range(0, 3 - len(records)))
+            records.extend((None, None) for i in range(3 - len(records)))
 
         value = '\n'.join(f'{emoji}: <@{author_id}> ({uses} times)' if author_id else f'{emoji}: No one!'
                           for (emoji, (uses, author_id)) in emojize(records))
@@ -553,7 +553,7 @@ class Tags(commands.Cog):
 
         if len(records) < 3:
             # fill with data to ensure that we have a minimum of 3
-            records.extend((None, None) for i in range(0, 3 - len(records)))
+            records.extend((None, None) for i in range(3 - len(records)))
 
         value = '\n'.join(f'{emoji}: <@{owner_id}> ({count} tags)' if owner_id else f'{emoji}: No one!'
                           for (emoji, (count, owner_id)) in emojize(records))
@@ -600,16 +600,12 @@ class Tags(commands.Cog):
 
         if len(records) < 3:
             # fill with data to ensure that we have a minimum of 3
-            records.extend((None, None, None, None) for i in range(0, 3 - len(records)))
+            records.extend((None, None, None, None) for _ in range(3 - len(records)))
 
         emoji = 129351 # ord(':first_place:')
 
         for (offset, (name, uses, _, _)) in enumerate(records):
-            if name:
-                value = f'{name} ({uses} uses)'
-            else:
-                value = 'Nothing!'
-
+            value = f'{name} ({uses} uses)' if name else 'Nothing!'
             e.add_field(name=f'{chr(emoji + offset)} Owned Tag', value=value)
 
         await ctx.send(embed=e)
@@ -658,10 +654,12 @@ class Tags(commands.Cog):
         Deleting a tag will delete all of its aliases as well.
         """
 
-        bypass_owner_check = ctx.author.id == self.bot.owner_id or ctx.author.guild_permissions.manage_messages
         clause = 'LOWER(name)=$1 AND location_id=$2'
 
-        if bypass_owner_check:
+        if (
+            bypass_owner_check := ctx.author.id == self.bot.owner_id
+            or ctx.author.guild_permissions.manage_messages
+        ):
             args = [name, ctx.guild.id]
         else:
             args = [name, ctx.guild.id, ctx.author.id]
@@ -1241,11 +1239,12 @@ class Tags(commands.Cog):
         for offset, (name, uses, _, _) in enumerate(top_tags):
             embed.add_field(name=f'{chr(emoji + offset)} Tag', value=f'{name} ({uses} uses)')
 
-        values = []
-        for offset, (total, uses, owner_id, _) in enumerate(top_creators):
-            values.append(f'{chr(emoji + offset)}: {self.bot.get_user(owner_id) or owner_id} -- {total} tags ({uses} uses)')
+        values = [
+            f'{chr(emoji + offset)}: {self.bot.get_user(owner_id) or owner_id} -- {total} tags ({uses} uses)'
+            for offset, (total, uses, owner_id, _) in enumerate(top_creators)
+        ]
 
-        embed.add_field(name=f'Tag Creators', value='\n'.join(values), inline=False)
+        embed.add_field(name='Tag Creators', value='\n'.join(values), inline=False)
         embed.set_footer(text='These statistics are for the tag box.')
         await ctx.send(embed=embed)
 

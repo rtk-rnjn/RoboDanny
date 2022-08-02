@@ -43,8 +43,7 @@ async def migrate_mod(pool, client):
     # so let's convert to guild_id: [channel_id]
     ignored = {}
     for item in config.get('ignored', []):
-        ch = client.get_channel(int(item))
-        if ch:
+        if ch := client.get_channel(int(item)):
             ignored.setdefault(ch.guild.id, []).append(ch.id)
 
     # guild_id: data
@@ -116,10 +115,7 @@ async def migrate_mod(pool, client):
 async def migrate_tags(pool, client):
     tags = _load_json('tags.json')
 
-    # <location>:
-    #   <name>: <data>
 
-    # pretty straightforward port
 
     class TagData:
         __slots__ = ('name', 'content', 'owner_id', 'location_id', 'created_at', 'uses')
@@ -136,8 +132,7 @@ async def migrate_tags(pool, client):
             else:
                 self.location_id = None
 
-            dt = data.get('created_at')
-            if dt:
+            if dt := data.get('created_at'):
                 self.created_at = datetime.datetime.fromtimestamp(dt)
             else:
                 self.created_at = datetime.datetime.utcnow()
@@ -148,6 +143,9 @@ async def migrate_tags(pool, client):
         def _key(self):
             return (self.name.lower(), self.location_id)
 
+
+
+
     class TagLookupData:
         __slots__ = ('name', 'tag_id', 'owner_id', 'created_at', 'location_id')
 
@@ -156,8 +154,7 @@ async def migrate_tags(pool, client):
             self.owner_id = int(data['owner_id'])
             self.location_id = location
 
-            dt = data.get('created_at')
-            if dt:
+            if dt := data.get('created_at'):
                 self.created_at = datetime.datetime.fromtimestamp(dt)
             else:
                 self.created_at = datetime.datetime.utcnow()
@@ -187,6 +184,7 @@ async def migrate_tags(pool, client):
         def _key(self):
             return (self.name.lower(), self.location_id)
 
+
     tag_data = [
         TagData(data)
         for location, obj in tags.items()
@@ -197,15 +195,15 @@ async def migrate_tags(pool, client):
 
     seen = set()
     seen_add = seen.add
-    tag_data = [x for x in tag_data if not (x._key() in seen or seen_add(x._key()))]
+    tag_data = [
+        x for x in tag_data if x._key() not in seen and not seen_add(x._key())
+    ]
+
 
     lookup = []
 
     for location, obj in tags.items():
-        location_id = None if not location.isdigit() else int(location)
-
-        # if client.get_guild(location_id) is None:
-            # continue
+        location_id = int(location) if location.isdigit() else None
 
         for name, data in obj.items():
             if '__tag_alias__' not in data:
@@ -218,9 +216,11 @@ async def migrate_tags(pool, client):
             else:
                 lookup.append(lookup_data)
 
-    for index, tag in enumerate(tag_data, 1):
-        if tag.location_id is not None:
-            lookup.append(TagLookupData.from_tag_pair(index, tag))
+    lookup.extend(
+        TagLookupData.from_tag_pair(index, tag)
+        for index, tag in enumerate(tag_data, 1)
+        if tag.location_id is not None
+    )
 
     # due to a bug in ?tag make some duplicates are added for whatever reason
     # we'll just take one off at random and hope for the best
@@ -230,7 +230,7 @@ async def migrate_tags(pool, client):
 
     seen = set()
     seen_add = seen.add
-    lookup = [x for x in lookup if not (x._key() in seen or seen_add(x._key()))]
+    lookup = [x for x in lookup if x._key() not in seen and not seen_add(x._key())]
 
     async with pool.acquire() as con:
         # delete the current tags
@@ -298,9 +298,9 @@ async def migrate_stars(pool, client):
         await con.execute("TRUNCATE starboard, starboard_entries, starrers RESTART IDENTITY;")
 
         records = []
-        for guild_id in stars:
+        for guild_id, value_ in stars.items():
             # we do not care about 'locked' status when porting
-            stars[guild_id].pop('locked', None)
+            value_.pop('locked', None)
             guild = client.get_guild(guild_id)
             if not guild:
                 continue
@@ -336,9 +336,7 @@ async def migrate_stars(pool, client):
 
                 entries.append(Entry(guild_id, message_id, bot_message_id))
                 entry_id = len(entries)
-                for author_id in rest:
-                    starrers.append(Starrer(author_id, entry_id))
-
+                starrers.extend(Starrer(author_id, entry_id) for author_id in rest)
         # actually port now
         records = [entry.to_record() for entry in entries]
         status = await con.copy_records_to_table('starboard_entries', columns=Entry.__slots__, records=records)
@@ -353,6 +351,8 @@ async def migrate_profile(pool, client):
     friend_codes = _load_json('pokemon.json').get('friend_codes', {})
     profiles = _load_json('profiles.json')
 
+
+
     class ProfileEntry:
         __slots__ = ('id', 'nnid', 'squad', 'extra', 'fc_3ds')
 
@@ -363,12 +363,10 @@ async def migrate_profile(pool, client):
             self.fc_3ds = fc
 
             extra = {}
-            rank = profile.get('rank')
-            if rank:
+            if rank := profile.get('rank'):
                 extra['sp1_rank'] = rank
 
-            weapon = profile.get('weapon')
-            if weapon:
+            if weapon := profile.get('weapon'):
                 extra['sp1_weapon'] = weapon
 
             self.extra = json.dumps(extra)
@@ -376,14 +374,16 @@ async def migrate_profile(pool, client):
         def to_record(self):
             return tuple(getattr(self, a) for a in self.__slots__)
 
+
     data = []
 
     for key, value in profiles.items():
         code = friend_codes.pop(key, None)
         data.append(ProfileEntry(key, value, code))
 
-    for key, value in friend_codes.items():
-        data.append(ProfileEntry(key, {}, value))
+    data.extend(
+        ProfileEntry(key, {}, value) for key, value in friend_codes.items()
+    )
 
     async with pool.acquire() as con:
         await con.execute("TRUNCATE profiles RESTART IDENTITY;")
