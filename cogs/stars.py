@@ -158,9 +158,7 @@ class Stars(commands.Cog):
         # To create the gradient, we use a linear interpolation formula
         # Which for reference is X = X_1 * p + X_2 * (1 - p)
         p = stars / 13
-        if p > 1.0:
-            p = 1.0
-
+        p = min(p, 1.0)
         red = 255
         green = int((194 * p) + (253 * (1 - p)))
         blue = int((12 * p) + (247 * (1 - p)))
@@ -168,10 +166,7 @@ class Stars(commands.Cog):
 
     def is_url_spoiler(self, text, url):
         spoilers = self.spoilers.findall(text)
-        for spoiler in spoilers:
-            if url in spoiler:
-                return True
-        return False
+        return any(url in spoiler for spoiler in spoilers)
 
     def get_emoji_message(self, message, stars):
         emoji = self.star_emoji(stars)
@@ -340,8 +335,7 @@ class Stars(commands.Cog):
         async with lock:
             async with self.bot.pool.acquire(timeout=300.0) as con:
                 if verify:
-                    config = self.bot.get_cog('Config')
-                    if config:
+                    if config := self.bot.get_cog('Config'):
                         plonked = await config.is_plonked(guild_id, starrer_id, channel=channel, connection=con)
                         if plonked:
                             return
@@ -479,8 +473,7 @@ class Stars(commands.Cog):
         async with lock:
             async with self.bot.pool.acquire(timeout=300.0) as con:
                 if verify:
-                    config = self.bot.get_cog('Config')
-                    if config:
+                    if config := self.bot.get_cog('Config'):
                         plonked = await config.is_plonked(guild_id, starrer_id, channel=channel, connection=con)
                         if plonked:
                             return
@@ -649,12 +642,15 @@ class Stars(commands.Cog):
         if channel is None:
             data.append('Channel: #deleted-channel')
         else:
-            data.append(f'Channel: {channel.mention}')
-            data.append(f'NSFW: {channel.is_nsfw()}')
+            data.extend((f'Channel: {channel.mention}', f'NSFW: {channel.is_nsfw()}'))
+        data.extend(
+            (
+                f'Locked: {starboard.locked}',
+                f'Limit: {plural(starboard.threshold):star}',
+                f'Max Age: {plural(starboard.max_age.days):day}',
+            )
+        )
 
-        data.append(f'Locked: {starboard.locked}')
-        data.append(f'Limit: {plural(starboard.threshold):star}')
-        data.append(f'Max Age: {plural(starboard.max_age.days):day}')
         await ctx.send('\n'.join(data))
 
     @commands.group(invoke_without_command=True, ignore_extra=False)
@@ -899,9 +895,9 @@ class Stars(commands.Cog):
             self.get_starboard.invalidate(self, guild_id)
 
             m = await ctx.send(f'{ctx.author.mention}, we are done migrating!\n' \
-                                'The starboard has been unlocked.\n' \
-                               f'Updated {updated}/{fetched} entries to the new format.\n' \
-                               f'Took {delta:.2f}s.')
+                                    'The starboard has been unlocked.\n' \
+                                   f'Updated {updated}/{fetched} entries to the new format.\n' \
+                                   f'Took {delta:.2f}s.')
 
             e = discord.Embed(title='Starboard Migration', colour=discord.Colour.gold())
             e.add_field(name='Updated', value=updated)
@@ -1206,7 +1202,7 @@ class Stars(commands.Cog):
         valid_units = ('days', 'weeks', 'months', 'years')
 
         if units[-1] != 's':
-            units = units + 's'
+            units = f'{units}s'
 
         if units not in valid_units:
             return await ctx.send(f'Not a valid unit! I expect only {human_join(valid_units)}.')
@@ -1223,11 +1219,7 @@ class Stars(commands.Cog):
         await ctx.db.execute(query, ctx.guild.id)
         self.get_starboard.invalidate(self, ctx.guild.id)
 
-        if number == 1:
-            age = f'1 {units[:-1]}'
-        else:
-            age = f'{number} {units}'
-
+        age = f'1 {units[:-1]}' if number == 1 else f'{number} {units}'
         await ctx.send(f'Messages must now be less than {age} old to be starred.')
 
     @commands.command(hidden=True)
@@ -1240,8 +1232,7 @@ class Stars(commands.Cog):
 
         to_send = []
         for guild_id, channel_id in records:
-            guild = self.bot.get_guild(guild_id)
-            if guild:
+            if guild := self.bot.get_guild(guild_id):
                 channel = guild.get_channel(channel_id)
                 if channel and channel.permissions_for(guild.me).send_messages:
                     to_send.append(channel)

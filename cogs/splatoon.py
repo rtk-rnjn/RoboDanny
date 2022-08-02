@@ -30,18 +30,14 @@ def is_valid_entry(result, entry):
 
     # make sure the map isn't played in the last 2 games
     last_two_games = result[-2:]
-    for prev in last_two_games:
-        if prev.stage == entry.stage:
-            return False
-
-    return True
+    return all(prev.stage != entry.stage for prev in last_two_games)
 
 def get_random_scrims(modes, maps, count):
     result = []
     current_mode_index = 0
-    for index in range(count):
+    for _ in range(count):
         # only try up to 25 times instead of infinitely
-        for i in range(25):
+        for _ in range(25):
             entry = GameEntry(stage=random.choice(maps), mode=modes[current_mode_index])
             if is_valid_entry(result, entry):
                 result.append(entry)
@@ -313,12 +309,15 @@ class GearPageSource(menus.ListPageSource):
             common = gear.frequent_skill
         else:
             brands = data.get('brands', [])
-            for brand in brands:
-                if brand['name'] == gear.brand:
-                    common = brand['buffed']
-                    break
-            else:
-                common = 'Not found...'
+            common = next(
+                (
+                    brand['buffed']
+                    for brand in brands
+                    if brand['name'] == gear.brand
+                ),
+                'Not found...',
+            )
+
         e.add_field(name='Common Gear Ability', value=common)
 
         maximum = self.get_max_pages()
@@ -338,14 +337,10 @@ class Splatoon2Encoder(json.JSONEncoder):
             }
             payload['__gear__'] = True
             return payload
-        if isinstance(obj, SalmonRun):
-            return obj.to_dict()
-        return super().default(obj)
+        return obj.to_dict() if isinstance(obj, SalmonRun) else super().default(obj)
 
 def splatoon2_decoder(obj):
-    if '__gear__' in obj:
-        return Gear.from_json(obj)
-    return obj
+    return Gear.from_json(obj) if '__gear__' in obj else obj
 
 def mode_key(argument):
     lower = argument.lower().strip('"')
@@ -518,14 +513,11 @@ class GearQuery(commands.Converter):
 
 
         importance.sort(key=lambda t: t[1], reverse=True)
-        if len(importance) == 0:
+        if not importance:
             raise commands.BadArgument('Could not find anything.')
 
         top, score = importance[0]
-        if score == 100:
-            return [top]
-
-        return [g for g, _ in importance]
+        return [top] if score == 100 else [g for g, _ in importance]
 
 class Splatoon(commands.Cog):
     """Splatoon related commands."""
@@ -698,9 +690,9 @@ class Splatoon(commands.Cog):
                         await asyncio.sleep(300.0) # try again in 5 minutes
                         continue
 
-                    iksm = m.group('session')
+                    iksm = m['session']
                     try:
-                        expires = parsedate_to_datetime(m.group('expires'))
+                        expires = parsedate_to_datetime(m['expires'])
                     except:
                         expires = now.timestamp() + 300.0
                     else:
@@ -756,7 +748,7 @@ class Splatoon(commands.Cog):
                 now = datetime.datetime.utcnow()
                 return 300.0 if now > new else (new - now).total_seconds()
         except Exception as e:
-            await self.bot.get_cog('Stats').log_error(extra=f'Splatnet schedule Error')
+            await self.bot.get_cog('Stats').log_error(extra='Splatnet schedule Error')
             return 300.0
 
     async def parse_splatnet2_onlineshop(self):
@@ -796,7 +788,7 @@ class Splatoon(commands.Cog):
                 except:
                     return 300.0
         except Exception as e:
-            await self.bot.get_cog('Stats').log_error(extra=f'Splatnet Shop Error')
+            await self.bot.get_cog('Stats').log_error(extra='Splatnet Shop Error')
             return 300.0
 
     def scrape_data_from_player(self, player, bulk):

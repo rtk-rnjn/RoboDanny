@@ -66,8 +66,7 @@ class GistContent:
 def make_field_from_note(data, column_id):
     id = data['id']
     value = data['note']
-    issue = data.get('content_url')
-    if issue:
+    if issue := data.get('content_url'):
         issue = issue.replace('api.github.com/repos', 'github.com')
         _, _, number = issue.rpartition('/')
         value = f'[#{number}]({issue})'
@@ -115,7 +114,7 @@ class DPYExclusive(commands.Cog, name='discord.py'):
         req_url = yarl.URL('https://api.github.com') / url
 
         if headers is not None and isinstance(headers, dict):
-            hdrs.update(headers)
+            hdrs |= headers
 
         await self._req_lock.acquire()
         try:
@@ -195,12 +194,8 @@ class DPYExclusive(commands.Cog, name='discord.py'):
                 return
             matches = emoji.find_all_emoji(message)
             # Don't want multiple emoji per message
-            if len(matches) > 1:
+            if len(matches) > 1 or len(message.attachments) > 1:
                 return await message.delete()
-            elif len(message.attachments) > 1:
-                # Nor multiple attachments
-                return await message.delete()
-
             # Add voting reactions
             await message.add_reaction('<:greenTick:330090705336664065>')
             await message.add_reaction('<:redTick:330090723011592193>')
@@ -262,8 +257,7 @@ class DPYExclusive(commands.Cog, name='discord.py'):
             current_labels = {e['name'] for e in issue.get('labels', [])}
             valid_labels = await self.get_valid_labels()
             labels = set(labels)
-            diff = [repr(x) for x in (labels - valid_labels)]
-            if diff:
+            if diff := [repr(x) for x in (labels - valid_labels)]:
                 raise GithubError(f'Invalid labels passed: {human_join(diff, final="and")}')
             data['labels'] = list(current_labels | labels)
 

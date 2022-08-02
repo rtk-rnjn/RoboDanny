@@ -5,9 +5,7 @@ import asyncio
 
 def _create_encoder(cls):
     def _default(self, o):
-        if isinstance(o, cls):
-            return o.to_json()
-        return super().default(o)
+        return o.to_json() if isinstance(o, cls) else super().default(o)
 
     return type('_Encoder', (json.JSONEncoder,), { 'default': _default })
 
@@ -46,7 +44,7 @@ class Config:
             await self.loop.run_in_executor(None, self.load_from_file)
 
     def _dump(self):
-        temp = '%s-%s.tmp' % (uuid.uuid4(), self.name)
+        temp = f'{uuid.uuid4()}-{self.name}.tmp'
         with open(temp, 'w', encoding='utf-8') as tmp:
             json.dump(self._db.copy(), tmp, ensure_ascii=True, cls=self.encoder, separators=(',', ':'))
 

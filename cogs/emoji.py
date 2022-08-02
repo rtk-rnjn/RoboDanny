@@ -77,15 +77,9 @@ class EmojiURL:
 def usage_per_day(dt, usages):
     tracking_started = datetime.datetime(2017, 3, 31, tzinfo=datetime.timezone.utc)
     now = discord.utils.utcnow()
-    if dt < tracking_started:
-        base = tracking_started
-    else:
-        base = dt
-
+    base = tracking_started if dt < tracking_started else dt
     days = (now - base).total_seconds() / 86400 # 86400 seconds in a day
-    if int(days) == 0:
-        return usages
-    return usages / days
+    return usages if int(days) == 0 else usages / days
 
 class EmojiStats(db.Table, table_name='emoji_stats'):
     id = db.Column(db.Integer(big=True, auto_increment=True), primary_key=True)
@@ -181,7 +175,7 @@ class Emoji(commands.Cog):
         # we only care when an emoji is added
         lookup = { e.id for e in before }
         added = [e for e in after if e.id not in lookup and len(e.roles) == 0]
-        if len(added) == 0:
+        if not added:
             return
 
         log.info('Server %s has added %s emojis.', guild, len(added))
@@ -229,7 +223,7 @@ class Emoji(commands.Cog):
             per_day = usage_per_day(elem.created_at, count)
             return f'{elem}: {count} times, {per_day:.2f}/day ({count / total_count:.2%})'
 
-        top = [elem_to_string(key, count) for key, count in blob_usage[0:7]]
+        top = [elem_to_string(key, count) for key, count in blob_usage[:7]]
         bottom = [elem_to_string(key, count) for key, count in blob_usage[-7:]]
         e.add_field(name='Most Common', value='\n'.join(top), inline=False)
         e.add_field(name='Least Common', value='\n'.join(bottom), inline=False)
@@ -344,7 +338,7 @@ class Emoji(commands.Cog):
                 """
 
         records = await ctx.db.fetch(query, emoji_id)
-        transformed = {k: v for k, v in records}
+        transformed = dict(records)
         total = sum(transformed.values())
 
         dt = discord.utils.snowflake_time(emoji_id)

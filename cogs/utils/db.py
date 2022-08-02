@@ -34,13 +34,13 @@ class SQLType:
     def to_dict(self):
         o = self.__dict__.copy()
         cls = self.__class__
-        o['__meta__'] = cls.__module__ + '.' + cls.__qualname__
+        o['__meta__'] = f'{cls.__module__}.{cls.__qualname__}'
         return o
 
     @classmethod
     def from_dict(cls, data):
         meta = data.pop('__meta__')
-        given = cls.__module__ + '.' + cls.__qualname__
+        given = f'{cls.__module__}.{cls.__qualname__}'
         if given != meta:
             cls = pydoc.locate(meta)
             if cls is None:
@@ -87,9 +87,7 @@ class Datetime(SQLType):
         self.timezone = timezone
 
     def to_sql(self):
-        if self.timezone:
-            return 'TIMESTAMP WITH TIME ZONE'
-        return 'TIMESTAMP'
+        return 'TIMESTAMP WITH TIME ZONE' if self.timezone else 'TIMESTAMP'
 
 class Double(SQLType):
     python = float
@@ -118,14 +116,10 @@ class Integer(SQLType):
         if self.auto_increment:
             if self.big:
                 return 'BIGSERIAL'
-            if self.small:
-                return 'SMALLSERIAL'
-            return 'SERIAL'
+            return 'SMALLSERIAL' if self.small else 'SERIAL'
         if self.big:
             return 'BIGINT'
-        if self.small:
-            return 'SMALLINT'
-        return 'INTEGER'
+        return 'SMALLINT' if self.small else 'INTEGER'
 
     def is_real_type(self):
         return not self.auto_increment
@@ -145,9 +139,7 @@ class Interval(SQLType):
             self.field = None
 
     def to_sql(self):
-        if self.field:
-            return 'INTERVAL ' + self.field
-        return 'INTERVAL'
+        return f'INTERVAL {self.field}' if self.field else 'INTERVAL'
 
 class Numeric(SQLType):
     python = decimal.Decimal
@@ -191,9 +183,7 @@ class Time(SQLType):
         self.timezone = timezone
 
     def to_sql(self):
-        if self.timezone:
-            return 'TIME WITH TIME ZONE'
-        return 'TIME'
+        return 'TIME WITH TIME ZONE' if self.timezone else 'TIME'
 
 class JSON(SQLType):
     python = None
@@ -218,10 +208,10 @@ class ForeignKey(SQLType):
         on_update = on_update.upper()
 
         if on_delete not in valid_actions:
-            raise TypeError('on_delete must be one of %s.' % valid_actions)
+            raise TypeError(f'on_delete must be one of {valid_actions}.')
 
         if on_update not in valid_actions:
-            raise TypeError('on_update must be one of %s.' % valid_actions)
+            raise TypeError(f'on_update must be one of {valid_actions}.')
 
 
         self.table = table
@@ -310,7 +300,7 @@ class Column:
 
     @property
     def _comparable_id(self):
-        return '-'.join('%s:%s' % (attr, getattr(self, attr)) for attr in self.__slots__)
+        return '-'.join(f'{attr}:{getattr(self, attr)}' for attr in self.__slots__)
 
     def _to_dict(self):
         d = {
@@ -330,10 +320,7 @@ class Column:
         return self.unique == other.unique and self.primary_key == other.primary_key
 
     def _create_table(self):
-        builder = []
-        builder.append(self.name)
-        builder.append(self.column_type.to_sql())
-
+        builder = [self.name, self.column_type.to_sql()]
         default = self.default
         if default is not None:
             builder.append('DEFAULT')
@@ -342,7 +329,7 @@ class Column:
             elif isinstance(default, bool):
                 builder.append(str(default).upper())
             else:
-                builder.append("(%s)" % default)
+                builder.append(f"({default})")
         elif self.unique:
             builder.append('UNIQUE')
         if not self.nullable:
@@ -372,8 +359,8 @@ class SchemaDiff:
 
     def to_sql(self, *, downgrade=False):
         statements = []
-        base = 'ALTER TABLE %s ' % self.table.__tablename__
-        path = self.upgrade if not downgrade else self.downgrade
+        base = f'ALTER TABLE {self.table.__tablename__} '
+        path = self.downgrade if downgrade else self.upgrade
 
         for rename in path.get('rename_columns', []):
             fmt = '{0}RENAME COLUMN {1[before]} TO {1[after]};'.format(base, rename)
@@ -389,7 +376,7 @@ class SchemaDiff:
 
             using = changed_types.get('using')
             if using is not None:
-                fmt = '%s USING %s' % (fmt, using)
+                fmt = f'{fmt} USING {using}'
 
             sub_statements.append(fmt)
 
@@ -414,18 +401,21 @@ class SchemaDiff:
 
         for added in path.get('add_columns', []):
             column = Column.from_dict(added)
-            sub_statements.append('ADD COLUMN ' + column._create_table())
+            sub_statements.append(f'ADD COLUMN {column._create_table()}')
 
         if sub_statements:
             statements.append(base + ', '.join(sub_statements) + ';')
 
         # handle the index creation bits
-        for dropped in path.get('drop_index', []):
-            statements.append('DROP INDEX IF EXISTS {0[index]};'.format(dropped))
+        statements.extend(
+            'DROP INDEX IF EXISTS {0[index]};'.format(dropped)
+            for dropped in path.get('drop_index', [])
+        )
 
-        for added in path.get('add_index', []):
-            fmt = 'CREATE INDEX IF NOT EXISTS {0[index]} ON {1.__tablename__} ({0[name]});'
-            statements.append(fmt.format(added, self.table))
+        fmt = 'CREATE INDEX IF NOT EXISTS {0[index]} ON {1.__tablename__} ({0[name]});'
+        statements.extend(
+            fmt.format(added, self.table) for added in path.get('add_index', [])
+        )
 
         return '\n'.join(statements)
 
@@ -467,7 +457,7 @@ class TableMeta(type):
                     value.name = elem
 
                 if value.index:
-                    value.index_name = '%s_%s_idx' % (table_name, value.name)
+                    value.index_name = f'{table_name}_{value.name}_idx'
 
                 columns.append(value)
 
@@ -541,7 +531,7 @@ class Table(metaclass=TableMeta):
         if not p.exists():
             raise RuntimeError('Could not find migration file.')
 
-        current = directory.with_name('current-' + p.name)
+        current = directory.with_name(f'current-{p.name}')
 
         if not current.exists():
             raise RuntimeError('Could not find current data file.')
@@ -565,7 +555,7 @@ class Table(metaclass=TableMeta):
         if len(migrations) == 0 or migrations[-1] != our_migrations:
             # we have a new migration, so add it
             migrations.append(our_migrations)
-            temp_file = p.with_name('%s-%s.tmp' % (uuid.uuid4(), p.name))
+            temp_file = p.with_name(f'{uuid.uuid4()}-{p.name}.tmp')
             with temp_file.open('w', encoding='utf-8') as tmp:
                 json.dump(data, tmp, ensure_ascii=True, indent=4)
 
@@ -616,7 +606,7 @@ class Table(metaclass=TableMeta):
                 print(sql)
             await con.execute(sql)
 
-        current = directory.with_name('current-' + p.name)
+        current = directory.with_name(f'current-{p.name}')
         with current.open('w', encoding='utf-8') as fp:
             json.dump(cls.to_dict(), fp, indent=4, ensure_ascii=True)
 
@@ -645,7 +635,7 @@ class Table(metaclass=TableMeta):
         """
         directory = Path(directory) / cls.__tablename__
         p = directory.with_suffix('.json')
-        current = directory.with_name('current-' + p.name)
+        current = directory.with_name(f'current-{p.name}')
 
         table_data = cls.to_dict()
 
@@ -700,7 +690,7 @@ class Table(metaclass=TableMeta):
         if len(migrations) == 0 or migrations[-1] != our_migrations:
             # we have a new migration, so add it
             migrations.append(our_migrations)
-            temp_file = p.with_name('%s-%s.tmp' % (uuid.uuid4(), p.name))
+            temp_file = p.with_name(f'{uuid.uuid4()}-{p.name}.tmp')
             with temp_file.open('w', encoding='utf-8') as tmp:
                 json.dump(data, tmp, ensure_ascii=True, indent=4)
 
@@ -729,7 +719,7 @@ class Table(metaclass=TableMeta):
 
         directory = Path(directory) / cls.__tablename__
         p = directory.with_suffix('.json')
-        current = directory.with_name('current-' + p.name)
+        current = directory.with_name(f'current-{p.name}')
 
         if not p.exists() or not current.exists():
             raise RuntimeError('Could not find the appropriate data files.')
@@ -753,7 +743,6 @@ class Table(metaclass=TableMeta):
     @classmethod
     def create_table(cls, *, exists_ok=True):
         """Generates the CREATE TABLE stub."""
-        statements = []
         builder = ['CREATE TABLE']
 
         if exists_ok:
@@ -767,10 +756,9 @@ class Table(metaclass=TableMeta):
             if col.primary_key:
                 primary_keys.append(col.name)
 
-        column_creations.append('PRIMARY KEY (%s)' % ', '.join(primary_keys))
-        builder.append('(%s)' % ', '.join(column_creations))
-        statements.append(' '.join(builder) + ';')
-
+        column_creations.append(f"PRIMARY KEY ({', '.join(primary_keys)})")
+        builder.append(f"({', '.join(column_creations)})")
+        statements = [' '.join(builder) + ';']
         # handle the index creations
         for column in cls.columns:
             if column.index:
@@ -793,34 +781,35 @@ class Table(metaclass=TableMeta):
 
             check = column.column_type.python
             if value is None and not column.nullable:
-                raise TypeError('Cannot pass None to non-nullable column %s.' % column.name)
+                raise TypeError(f'Cannot pass None to non-nullable column {column.name}.')
             elif not check or not isinstance(value, check):
                 fmt = 'column {0.name} expected {1.__name__}, received {2.__class__.__name__}'
                 raise TypeError(fmt.format(column, check, value))
 
             verified[column.name] = value
 
-        sql = 'INSERT INTO {0} ({1}) VALUES ({2});'.format(cls.__tablename__, ', '.join(verified),
-                                                           ', '.join('$' + str(i) for i, _ in enumerate(verified, 1)))
+        sql = 'INSERT INTO {0} ({1}) VALUES ({2});'.format(
+            cls.__tablename__,
+            ', '.join(verified),
+            ', '.join(f'${str(i)}' for i, _ in enumerate(verified, 1)),
+        )
+
 
         async with MaybeAcquire(connection, pool=cls._pool) as con:
             await con.execute(sql, *verified.values())
 
     @classmethod
     def to_dict(cls):
-        x = {}
-        x['name'] = cls.__tablename__
-        x['__meta__'] = cls.__module__ + '.' + cls.__qualname__
-
-        # nb: columns is ordered due to the ordered dict usage
-        #     this is used to help detect renames
-        x['columns'] = [a._to_dict() for a in cls.columns]
-        return x
+        return {
+            'name': cls.__tablename__,
+            '__meta__': f'{cls.__module__}.{cls.__qualname__}',
+            'columns': [a._to_dict() for a in cls.columns],
+        }
 
     @classmethod
     def from_dict(cls, data):
         meta = data['__meta__']
-        given = cls.__module__ + '.' + cls.__qualname__
+        given = f'{cls.__module__}.{cls.__qualname__}'
         if given != meta:
             cls = pydoc.locate(meta)
             if cls is None:

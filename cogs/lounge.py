@@ -244,7 +244,7 @@ class Lounge(commands.Cog, name='Lounge<C++>'):
                 else:
                     description.append(f'[`{node.text}`](http://en.cppreference.com{href})')
 
-            if len(special_pages) > 0:
+            if special_pages:
                 e.add_field(name='Language Results', value='\n'.join(special_pages), inline=False)
                 if len(description):
                     e.add_field(name='Library Results', value='\n'.join(description[:10]), inline=False)

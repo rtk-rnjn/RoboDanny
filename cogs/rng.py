@@ -35,8 +35,7 @@ class RNG(commands.Cog):
             return await ctx.send('Splatoon commands currently disabled.')
 
         count = min(max(count, 1), 8)
-        weapons = splatoon.splat2_data.get('weapons', [])
-        if weapons:
+        if weapons := splatoon.splat2_data.get('weapons', []):
             if count == 1:
                 weapon = rng.choice(weapons)
                 await ctx.send(f'{weapon["name"]} with {weapon["sub"]} and {weapon["special"]} special.')
@@ -64,9 +63,7 @@ class RNG(commands.Cog):
         weapons = rng.sample(splatoon.splat2_data.get('weapons', []), 8)
         for i in range(8):
             if i == 4:
-                result.append('')
-                result.append('**Team Bravo**')
-
+                result.extend(('', '**Team Bravo**'))
             result.append(f'Player {i + 1}: {weapons[i]["name"]}')
 
         await ctx.send('\n'.join(result))
@@ -95,8 +92,7 @@ class RNG(commands.Cog):
             await ctx.send('Splatoon commands currently disabled.')
             return
 
-        maps = splatoon.splat2_data.get('maps', [])
-        if maps:
+        if maps := splatoon.splat2_data.get('maps', []):
             await ctx.send(rng.choice(maps))
 
         del splatoon
@@ -115,8 +111,7 @@ class RNG(commands.Cog):
             await ctx.send('Splatoon commands currently disabled.')
             return
 
-        maps = splatoon.splat2_data.get('maps', [])
-        if maps:
+        if maps := splatoon.splat2_data.get('maps', []):
             mode = rng.choice(['Splat Zones', 'Tower Control', 'Rainmaker'])
             stage = rng.choice(maps)
             await ctx.send(f'{mode} on {stage}')
@@ -174,12 +169,14 @@ class RNG(commands.Cog):
             times = (len(choices) ** 2) + 1
 
         times = min(10001, max(1, times))
-        results = Counter(rng.choice(choices) for i in range(times))
+        results = Counter(rng.choice(choices) for _ in range(times))
         builder = []
         if len(results) > 10:
             builder.append('Only showing top 10 results...')
-        for index, (elem, count) in enumerate(results.most_common(10), start=1):
-            builder.append(f'{index}. {elem} ({plural(count):time}, {count/times:.2%})')
+        builder.extend(
+            f'{index}. {elem} ({plural(count):time}, {count/times:.2%})'
+            for index, (elem, count) in enumerate(results.most_common(10), start=1)
+        )
 
         await ctx.send('\n'.join(builder))
 

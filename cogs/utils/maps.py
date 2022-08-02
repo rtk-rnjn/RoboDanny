@@ -28,8 +28,7 @@ class Rotation(object):
         prefix = ''
         if self.start > now:
             minutes_delta = int((self.start - now) / datetime.timedelta(minutes=1))
-            hours = int(minutes_delta / 60)
-            minutes = minutes_delta % 60
+            hours, minutes = divmod(minutes_delta, 60)
             prefix = '**In {0} hours and {1} minutes**:\n'.format(hours, minutes)
         else:
             prefix = '**Current Rotation**:\n'
@@ -66,7 +65,10 @@ def parse_splatnet_time(timestr):
     m = re.match(regex, timestr.strip())
 
     if m is None:
-        raise RuntimeError('Apparently the timestamp "{}" does not match the regex.'.format(timestr))
+        raise RuntimeError(
+            f'Apparently the timestamp "{timestr}" does not match the regex.'
+        )
+
 
     matches = m.groupdict()
     tz = matches['tz'].strip().upper()
@@ -78,7 +80,7 @@ def parse_splatnet_time(timestr):
         # EST is UTC - 5, PST is UTC - 8, so you need +8 to make it UTC
         offset = +8
     else:
-        raise RuntimeError('Unknown timezone found: {}'.format(tz))
+        raise RuntimeError(f'Unknown timezone found: {tz}')
 
     pm = matches['p'].replace('.', '') # a.m. -> am
 

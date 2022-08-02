@@ -57,10 +57,7 @@ def hex_value(arg):
     return int(arg, base=16)
 
 def object_at(addr):
-    for o in gc.get_objects():
-        if id(o) == addr:
-            return o
-    return None
+    return next((o for o in gc.get_objects() if id(o) == addr), None)
 
 class Stats(commands.Cog):
     """Bot usage statistics."""
@@ -80,13 +77,13 @@ class Stats(commands.Cog):
         return discord.PartialEmoji(name='\N{BAR CHART}')
 
     async def bulk_insert(self):
-        query = """INSERT INTO commands (guild_id, channel_id, author_id, used, prefix, command, failed)
+        if self._data_batch:
+            query = """INSERT INTO commands (guild_id, channel_id, author_id, used, prefix, command, failed)
                    SELECT x.guild, x.channel, x.author, x.used, x.prefix, x.command, x.failed
                    FROM jsonb_to_recordset($1::jsonb) AS
                    x(guild BIGINT, channel BIGINT, author BIGINT, used TIMESTAMP, prefix TEXT, command TEXT, failed BOOLEAN)
                 """
 
-        if self._data_batch:
             await self.bot.pool.execute(query, self._data_batch)
             total = len(self._data_batch)
             if total > 1:
@@ -145,8 +142,9 @@ class Stats(commands.Cog):
     @discord.utils.cached_property
     def webhook(self):
         wh_id, wh_token = self.bot.config.stat_webhook
-        hook = discord.Webhook.partial(id=wh_id, token=wh_token, session=self.bot.session)
-        return hook
+        return discord.Webhook.partial(
+            id=wh_id, token=wh_token, session=self.bot.session
+        )
 
     async def log_error(self, *, ctx=None, extra=None):
         e = discord.Embed(title='Error', colour=0xdd5f53)
@@ -205,7 +203,7 @@ class Stats(commands.Cog):
 
     def format_commit(self, commit):
         short, _, _ = commit.message.partition('\n')
-        short_sha2 = commit.hex[0:6]
+        short_sha2 = commit.hex[:6]
         commit_tz = datetime.timezone(datetime.timedelta(minutes=commit.commit_time_offset))
         commit_time = datetime.datetime.fromtimestamp(commit.commit_time).astimezone(commit_tz)
 
@@ -521,7 +519,7 @@ class Stats(commands.Cog):
 
         e = discord.Embed(title='Last 24 Hour Command Stats', colour=discord.Colour.blurple())
         e.description = f'{failed + success + question} commands used today. ' \
-                        f'({success} succeeded, {failed} failed, {question} unknown)'
+                            f'({success} succeeded, {failed} failed, {question} unknown)'
 
         lookup = (
             '\N{FIRST PLACE MEDAL}',
@@ -702,8 +700,12 @@ class Stats(commands.Cog):
             if value._tokens == 0
         ]
 
-        description.append(f'Current Spammers: {", ".join(being_spammed) if being_spammed else "None"}')
-        description.append(f'Questionable Connections: {questionable_connections}')
+        description.extend(
+            (
+                f'Current Spammers: {", ".join(being_spammed) if being_spammed else "None"}',
+                f'Questionable Connections: {questionable_connections}',
+            )
+        )
 
         total_warnings += questionable_connections
         if being_spammed:
@@ -764,13 +766,15 @@ class Stats(commands.Cog):
 
         yesterday = discord.utils.utcnow() - datetime.timedelta(days=1)
         identifies = {
-            shard_id: sum(1 for dt in dates if dt > yesterday)
+            shard_id: sum(dt > yesterday for dt in dates)
             for shard_id, dates in self.bot.identifies.items()
         }
+
         resumes = {
-            shard_id: sum(1 for dt in dates if dt > yesterday)
+            shard_id: sum(dt > yesterday for dt in dates)
             for shard_id, dates in self.bot.resumes.items()
         }
+
 
         total_identifies = sum(identifies.values())
 
@@ -975,7 +979,7 @@ class Stats(commands.Cog):
         as_data = sorted(all_commands.items(), key=lambda t: t[1], reverse=True)
         table = formats.TabularData()
         table.set_columns(['Command', 'Uses'])
-        table.add_rows(tup for tup in as_data)
+        table.add_rows(iter(as_data))
         render = table.render()
 
         embed = discord.Embed(title='Summary', colour=discord.Colour.green())
@@ -1079,8 +1083,7 @@ async def on_error(self, event, *args, **kwargs):
     e.timestamp = discord.utils.utcnow()
 
     args_str = ['```py']
-    for index, arg in enumerate(args):
-        args_str.append(f'[{index}]: {arg!r}')
+    args_str.extend(f'[{index}]: {arg!r}' for index, arg in enumerate(args))
     args_str.append('```')
     e.add_field(name='Args', value='\n'.join(args_str), inline=False)
     hook = self.get_cog('Stats').webhook

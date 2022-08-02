@@ -228,10 +228,8 @@ class Admin(commands.Cog):
             'author': ctx.author,
             'guild': ctx.guild,
             'message': ctx.message,
-            '_': self._last_result
-        }
-
-        env.update(globals())
+            '_': self._last_result,
+        } | globals()
 
         body = self.cleanup_code(body)
         stdout = io.StringIO()
@@ -367,12 +365,7 @@ class Admin(commands.Cog):
         query = self.cleanup_code(query)
 
         is_multistatement = query.count(';') > 1
-        if is_multistatement:
-            # fetch does not support multiple statements
-            strategy = ctx.db.execute
-        else:
-            strategy = ctx.db.fetch
-
+        strategy = ctx.db.execute if is_multistatement else ctx.db.fetch
         try:
             start = time.perf_counter()
             results = await strategy(query)
@@ -443,7 +436,7 @@ class Admin(commands.Cog):
         new_ctx = await self.bot.get_context(msg, cls=type(ctx))
         new_ctx._db = ctx._db
 
-        for i in range(times):
+        for _ in range(times):
             await new_ctx.reinvoke()
 
     @commands.command(hidden=True)
@@ -454,11 +447,7 @@ class Admin(commands.Cog):
         async with ctx.typing():
             stdout, stderr = await self.run_process(command)
 
-        if stderr:
-            text = f'stdout:\n{stdout}\nstderr:\n{stderr}'
-        else:
-            text = stdout
-
+        text = f'stdout:\n{stdout}\nstderr:\n{stderr}' if stderr else stdout
         pages = RoboPages(TextPageSource(text), ctx=ctx)
         await pages.start()
 

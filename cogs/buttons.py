@@ -38,9 +38,7 @@ class UrbanDictionaryPageSource(menus.ListPageSource):
             return f'[{word}](http://{word.replace(" ", "-")}.urbanup.com)'
 
         ret = regex.sub(repl, definition)
-        if len(ret) >= 2048:
-            return ret[0:2000] + ' [...]'
-        return ret
+        return ret[:2000] + ' [...]' if len(ret) >= 2048 else ret
 
     async def format_page(self, menu, entry):
         maximum = self.get_max_pages()
@@ -57,7 +55,7 @@ class UrbanDictionaryPageSource(menus.ListPageSource):
             embed.add_field(name='Votes', value=f'\N{THUMBS UP SIGN} {up} \N{THUMBS DOWN SIGN} {down}', inline=False)
 
         try:
-            date = discord.utils.parse_time(entry['written_on'][0:-1])
+            date = discord.utils.parse_time(entry['written_on'][:-1])
         except (ValueError, KeyError):
             pass
         else:
@@ -68,7 +66,7 @@ class UrbanDictionaryPageSource(menus.ListPageSource):
 class RedditMediaURL:
     def __init__(self, url):
         self.url = url
-        self.filename = url.parts[1] + '.mp4'
+        self.filename = f'{url.parts[1]}.mp4'
 
     @classmethod
     async def convert(cls, ctx, argument):
@@ -148,8 +146,7 @@ class SpoilerCache:
             value = '\n'.join(f'[{a.filename}]({a.url})' for a in attachments)
             embed.add_field(name='Attachments', value=value, inline=False)
 
-        user = bot.get_user(self.author_id)
-        if user:
+        if user := bot.get_user(self.author_id):
             embed.set_author(name=str(user), icon_url=user.display_avatar.url)
 
         return embed
@@ -350,8 +347,9 @@ class Buttons(commands.Cog):
             'channel_id': int(data.footer.text),
             'attachments': message.attachments,
             'title': data.title,
-            'text': None if not data.description else data.description
+            'text': data.description or None,
         }
+
         cache = SpoilerCache(to_dict)
         self._spoiler_cache[message_id] = cache
         return cache

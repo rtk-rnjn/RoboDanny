@@ -88,7 +88,6 @@ class PromptTransaction:
                         RETURNING team_id;
                     """
             record = await con.fetchrow(query, self.team_page, self.team_logo, self.captain_id)
-            team_id = record[0]
         else:
             query = """WITH player_insert AS (
                            INSERT INTO players(discord_id, switch)
@@ -107,8 +106,7 @@ class PromptTransaction:
                        RETURNING team_id;
                     """
             record = await con.fetchrow(query, self.captain_discord, self.captain_fc, self.team_page, self.team_logo)
-            team_id = record[0]
-
+        team_id = record[0]
         # insert pre-existing members:
         if self.existing_members:
             query = """INSERT INTO team_members(player_id, team_id)
@@ -162,20 +160,21 @@ def validate_url(url):
     o = urlparse(url, scheme='http')
     if o.scheme not in ('http', 'https'):
         return False
-    url = o.netloc + o.path
-    if not url:
+    if url := o.netloc + o.path:
+        return (
+            o.geturl()
+            if url.lower().endswith(('.png', '.jpeg', '.jpg', '.gif'))
+            else False
+        )
+
+    else:
         return False
-    if not url.lower().endswith(('.png', '.jpeg', '.jpg', '.gif')):
-        return False
-    return o.geturl()
 
 def valid_logo(message):
     if message.content.lower() == 'none':
         return None
 
-    url = message.content
-    if message.attachments:
-        url = message.attachments[0].url
+    url = message.attachments[0].url if message.attachments else message.content
     return validate_url(url)
 
 BOOYAH_GUILD_ID = 333799317385117699
@@ -282,11 +281,10 @@ class Challonge:
             if resp.status == 200:
                 js = await resp.json()
                 return js.get('tournament', {})
-            if resp.status == 422:
-                js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
-            else:
+            if resp.status != 422:
                 raise ChallongeError(f'Challonge responded with {resp.status} for {url}.')
+            js = await resp.json()
+            raise ChallongeError('\n'.join(js.get('errors', [])))
 
     async def start(self, *, include_matches=True, include_participants=False):
         params = {
@@ -300,11 +298,10 @@ class Challonge:
             if resp.status == 200:
                 js = await resp.json()
                 return js.get('tournament', {})
-            if resp.status == 422:
-                js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
-            else:
+            if resp.status != 422:
                 raise ChallongeError(f'Challonge responded with {resp.status} for {url}.')
+            js = await resp.json()
+            raise ChallongeError('\n'.join(js.get('errors', [])))
 
     async def finalize(self, *, include_matches=False, include_participants=True):
         params = {
@@ -318,11 +315,10 @@ class Challonge:
             if resp.status == 200:
                 js = await resp.json()
                 return js.get('tournament', {})
-            if resp.status == 422:
-                js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
-            else:
+            if resp.status != 422:
                 raise ChallongeError(f'Challonge responded with {resp.status} for {url}.')
+            js = await resp.json()
+            raise ChallongeError('\n'.join(js.get('errors', [])))
 
     async def matches(self, *, state=None, participant_id=None):
         params = {
@@ -351,11 +347,10 @@ class Challonge:
             if resp.status == 200:
                 js = await resp.json()
                 return js.get('match', {})
-            if resp.status == 422:
-                js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
-            else:
+            if resp.status != 422:
                 raise ChallongeError(f'Challonge responded with {resp.status} for {url}.')
+            js = await resp.json()
+            raise ChallongeError('\n'.join(js.get('errors', [])))
 
     async def add_participant(self, username, *, misc=None):
         params = {
@@ -371,11 +366,10 @@ class Challonge:
             if resp.status == 200:
                 js = await resp.json()
                 return js.get('participant', {})
-            if resp.status == 422:
-                js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
-            else:
+            if resp.status != 422:
                 raise ChallongeError(f'Challonge responded with {resp.status} for {url}.')
+            js = await resp.json()
+            raise ChallongeError('\n'.join(js.get('errors', [])))
 
     async def get_participant(self, participant_id, *, include_matches=False):
         params = {
@@ -387,11 +381,10 @@ class Challonge:
             if resp.status == 200:
                 js = await resp.json()
                 return js.get('participant', {})
-            if resp.status == 422:
-                js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
-            else:
+            if resp.status != 422:
                 raise ChallongeError(f'Challonge responded with {resp.status} for {url}.')
+            js = await resp.json()
+            raise ChallongeError('\n'.join(js.get('errors', [])))
 
     async def remove_participant(self, participant_id):
         url = f'{self.BASE_API}/{self.slug}/participants/{participant_id}.json'
@@ -399,7 +392,7 @@ class Challonge:
         async with self.session.delete(url, params=params) as resp:
             if resp.status != 200:
                 js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
+                raise ChallongeError('\n'.join(js.get('errors', [])))
 
     async def participants(self):
         url = f'{self.BASE_API}/{self.slug}/participants.json'
@@ -413,7 +406,7 @@ class Challonge:
                 return [x['participant'] for x in js if 'participant' in x]
             elif resp.status == 422:
                 js = await resp.json()
-                raise ChallongeError('\n'.join(x for x in js.get('errors', [])))
+                raise ChallongeError('\n'.join(js.get('errors', [])))
             else:
                 raise ChallongeError(f'Challonge responded with {resp.status} for {url}.')
 
@@ -474,8 +467,7 @@ class Tournament(commands.Cog):
         """Shows you information about the currently tournament."""
         data = await self.challonge.show()
         e = discord.Embed(title=data['name'], url=self.challonge.url, colour=0xa83e4b)
-        description = data['description']
-        if description:
+        if description := data['description']:
             e.description = description
 
         participants = None
@@ -491,8 +483,8 @@ class Tournament(commands.Cog):
             attendance = f'{attendance}\n{len(participants.members)} active'
         if not_checked_in:
             not_checked_in = len(not_checked_in.members)
-            if not_checked_in:
-                attendance = f'{attendance}\n{not_checked_in} not checked in'
+        if not_checked_in:
+            attendance = f'{attendance}\n{not_checked_in} not checked in'
 
         e.add_field(name='Attendance', value=attendance)
 
@@ -616,7 +608,7 @@ class Tournament(commands.Cog):
         if minutes_remaining != 0:
             # A reminder that they need to check-in
             msg = f'<@&{role.id}> Reminder: You have **{minutes_remaining} minutes** left to check-in.\n\n' \
-                  f'To check-in please go to <#{BOT_SPAM_CHANNEL}> and use the `?checkin` command.'
+                      f'To check-in please go to <#{BOT_SPAM_CHANNEL}> and use the `?checkin` command.'
 
             await role.edit(mentionable=True)
             await announcement.send(msg)
@@ -629,7 +621,7 @@ class Tournament(commands.Cog):
         # Remove the role from everyone who did not check in and notify them.
 
         msg = "Hello. You've been disqualified due to failure to check-in. " \
-              "If you believe this is an error, please contact a TO."
+                  "If you believe this is an error, please contact a TO."
 
         for member in role.members:
             try:
@@ -681,7 +673,7 @@ class Tournament(commands.Cog):
         await self.log("Check-In Over", **fields)
 
         msg = "Check-ins are over! Please wait for a TO to start the tournament. " \
-              "If you failed to check-in you have received a direct message saying so."
+                  "If you failed to check-in you have received a direct message saying so."
 
         await announcement.send(msg)
 
@@ -804,9 +796,9 @@ class Tournament(commands.Cog):
 
                 to_beat = (best_of // 2) + 1
                 msg =  "@here Please use this channel to communicate!\n" \
-                       "When your match is complete, **both teams must report their own scores**.\n" \
-                      f"Reporting your score is done via the `?score` command. For example: `?score {to_beat}`\n" \
-                       "**The ?score command can only be done in this channel.**"
+                           "When your match is complete, **both teams must report their own scores**.\n" \
+                          f"Reporting your score is done via the `?score` command. For example: `?score {to_beat}`\n" \
+                           "**The ?score command can only be done in this channel.**"
 
                 await channel.send(msg)
             except:
@@ -926,7 +918,7 @@ class Tournament(commands.Cog):
             # A reminder that the round is almost over
             await role.edit(mentionable=True)
             msg = f'<@&{role.id}>, round {round_num} will conclude in {remaining} minutes. ' \
-                   'Please contact a TO if you have any issues.'
+                       'Please contact a TO if you have any issues.'
             await announcement.send(msg)
             await role.edit(mentionable=False)
             return
@@ -1199,7 +1191,7 @@ class Tournament(commands.Cog):
         # the captain has already registered their team before
         # so just fast track it and add it
         members = await self.get_discord_users_from_team(ctx.db, team_id=team_id)
-        if not any(member.id == ctx.author.id for member in members):
+        if all(member.id != ctx.author.id for member in members):
             return await ctx.send(f'{ctx.author.mention}, You do not belong to this team so you cannot register with it.')
 
         challonge = self.challonge
@@ -1214,11 +1206,11 @@ class Tournament(commands.Cog):
         }
 
         msg = f"{ctx.author.mention}, you have been successfully invited to the tournament.\n" \
-               "**Please follow these steps in order**\n" \
-               "1. Go to <http://challonge.com/notifications>\n" \
-               "2. Click on the newest \"You have been challonged\" invitation.\n" \
-               "3. Follow the steps in the invitation.\n" \
-              f"4. Reply to this message with: {participant_id}"
+                   "**Please follow these steps in order**\n" \
+                   "1. Go to <http://challonge.com/notifications>\n" \
+                   "2. Click on the newest \"You have been challonged\" invitation.\n" \
+                   "3. Follow the steps in the invitation.\n" \
+                  f"4. Reply to this message with: {participant_id}"
 
         await ctx.send(msg)
         await ctx.release()
@@ -1294,8 +1286,8 @@ class Tournament(commands.Cog):
         result = PromptTransaction(url.slug)
 
         msg = "Hello! I'm here to interactively set you up for the first-time registration of Booyah Battle.\n" \
-             f"**If you want to cancel, you can cancel at any time by doing ?cancel**\n\n" \
-              "Let's get us started with a question, **are you the captain of this team?** (say yes or no)"
+                 f"**If you want to cancel, you can cancel at any time by doing ?cancel**\n\n" \
+                  "Let's get us started with a question, **are you the captain of this team?** (say yes or no)"
 
         await ctx.release()
         reply = await self._prompt(dm, msg, validator=yes_no)
@@ -1322,9 +1314,9 @@ class Tournament(commands.Cog):
             result.add_pre_existing_captain(record[0])
 
         logo_msg = "What is your team's logo? You can either do the following:\n" \
-                   "- A URL pointing to the image, which must be a png/jpeg/jpg file.\n" \
-                   "- An image uploaded directly to this channel.\n" \
-                   "- Sending the message `None` to denote no logo."
+                       "- A URL pointing to the image, which must be a png/jpeg/jpg file.\n" \
+                       "- An image uploaded directly to this channel.\n" \
+                       "- Sending the message `None` to denote no logo."
 
         logo = await self._prompt(dm, logo_msg, validator=valid_logo)
         if logo is not None and not isinstance(logo, str):
@@ -1335,9 +1327,7 @@ class Tournament(commands.Cog):
         def valid_member(m, *, _find=discord.utils.find):
             name, _, discriminator = m.content.rpartition('#')
             value = _find(lambda u: u.name == name and u.discriminator == discriminator, self.bot.users)
-            if value is not None:
-                return value.id
-            return False
+            return value.id if value is not None else False
 
         member_msg = "What is the member's name? You must use name#tag. e.g. Danny#0007"
         ask_member_msg = "Do you have any other team members in the server? (say yes or no)"
@@ -1423,11 +1413,11 @@ class Tournament(commands.Cog):
 
             # wait for accepting
             msg = f"You have been successfully invited to the tournament.\n" \
-                   "**Please follow these steps in order**\n" \
-                   "1. Go to <http://challonge.com/notifications>\n" \
-                   "2. Click on the newest \"You have been challonged\" invitation.\n" \
-                   "3. Follow the steps in the invitation.\n" \
-                  f"4. Reply to this message with: {team_id}"
+                       "**Please follow these steps in order**\n" \
+                       "1. Go to <http://challonge.com/notifications>\n" \
+                       "2. Click on the newest \"You have been challonged\" invitation.\n" \
+                       "3. Follow the steps in the invitation.\n" \
+                      f"4. Reply to this message with: {team_id}"
 
             def verify(m):
                 return m.content == str(team_id)
@@ -1489,9 +1479,10 @@ class Tournament(commands.Cog):
         if self.tournament_state is not TournamentState.pending:
             return await ctx.send('No tournament is up for sign ups right now.')
 
-        if self.config.get('strict', False):
-            if not any(role.id == TOP_PARTICIPANT_ROLE for role in ctx.author.roles):
-                return await ctx.send('You do not have the Top Participant role.')
+        if self.config.get('strict', False) and all(
+            role.id != TOP_PARTICIPANT_ROLE for role in ctx.author.roles
+        ):
+            return await ctx.send('You do not have the Top Participant role.')
 
         try:
             team = await self.challonge.get_team_info(url.slug)
@@ -1556,13 +1547,14 @@ class Tournament(commands.Cog):
                 did_not_remove.append(member)
 
         fields = {
-            'Checked-in Members': '\n'.join(member.mention for member in members),
+            'Checked-in Members': '\n'.join(
+                (member.mention for member in members)
+            ),
+            'Failed Removals': '\n'.join(member.mention for member in members)
+            if did_not_remove
+            else 'None',
         }
 
-        if did_not_remove:
-            fields['Failed Removals'] = '\n'.join(member.mention for member in members)
-        else:
-            fields['Failed Removals'] = 'None'
 
         await self.log("Check-In Processed", ctx, **fields)
         await ctx.message.add_reaction(ctx.tick(True))
@@ -1622,7 +1614,6 @@ class Tournament(commands.Cog):
             changed_score = True
 
         if their_score is None:
-            ours[str(our_participant_id)] = wins
             title = 'Changed score submission' if changed_score else 'Score Submission'
         else:
             if their_score + wins > best_of:
@@ -1633,10 +1624,10 @@ class Tournament(commands.Cog):
                 await self.log(reason, ctx, error=True, **fields)
                 return
 
-            ours[str(our_participant_id)] = wins
             title = 'Changed complete score submission' if changed_score else 'Complete Score Submission'
             ping = True
 
+        ours[str(our_participant_id)] = wins
         await ctx.send('Score reported.')
         if round_complete:
             fields['Info'] = title
@@ -1662,7 +1653,7 @@ class Tournament(commands.Cog):
         record = await ctx.db.fetchrow(query, ctx.author.id)
         if record is None:
             return await ctx.send(f'You have not registered as a player. Try {ctx.prefix}player ' \
-                                   'switch SW-1234-5678-9012 to register yourself as a player.')
+                                       'switch SW-1234-5678-9012 to register yourself as a player.')
 
         player_id = record['id']
 
@@ -1745,7 +1736,7 @@ class Tournament(commands.Cog):
 
         if record is None:
             await ctx.send('It appears this member has not registered before. ' \
-                          f'Ask them to do so by inputting their switch code via "{ctx.prefix}player switch" command.')
+                              f'Ask them to do so by inputting their switch code via "{ctx.prefix}player switch" command.')
             return
 
         player_id = record['id']
@@ -1800,8 +1791,7 @@ class Tournament(commands.Cog):
             # add to the channel
             for channel_id, obj in self.config.get('round_info', {}).items():
                 if obj['player1_id'] == participant_id or obj['player2_id'] == participant_id:
-                    channel = ctx.guild.get_channel(int(channel_id))
-                    if channel:
+                    if channel := ctx.guild.get_channel(int(channel_id)):
                         await channel.set_permissions(member, read_messages=True)
 
     @team.command(name='remove')

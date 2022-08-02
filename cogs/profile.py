@@ -58,10 +58,7 @@ class DisambiguateMember(commands.IDConverter):
                 ]
 
                 def to_str(m):
-                    if m.nick:
-                        return f'{m} (a.k.a {m.nick})'
-                    else:
-                        return str(m)
+                    return f'{m} (a.k.a {m.nick})' if m.nick else str(m)
 
                 entry = to_str
 
@@ -198,8 +195,8 @@ class Profile(commands.Cog):
         if record is None:
             if member == ctx.author:
                 await ctx.send('You did not set up a profile.' \
-                              f' If you want to input a switch friend code, type {ctx.prefix}profile switch 1234-5678-9012' \
-                              f' or check {ctx.prefix}help profile')
+                                  f' If you want to input a switch friend code, type {ctx.prefix}profile switch 1234-5678-9012' \
+                                  f' or check {ctx.prefix}help profile')
             else:
                 await ctx.send('This member did not set up a profile.')
             return
@@ -222,11 +219,14 @@ class Profile(commands.Cog):
         e.set_author(name=member.display_name, icon_url=member.display_avatar.with_format('png'))
 
         extra = record['extra'] or {}
-        rank = extra.get('sp2_rank', {})
-        value = 'Unranked'
-        if rank:
-            value = '\n'.join(f'{mode}: {data["rank"]}{data["number"]}' for mode, data in rank.items())
+        if rank := extra.get('sp2_rank', {}):
+            value = '\n'.join(
+                f'{mode}: {data["rank"]}{data["number"]}'
+                for mode, data in rank.items()
+            )
 
+        else:
+            value = 'Unranked'
         e.add_field(name='Splatoon 2 Ranks', value=value)
 
         weapon = extra.get('sp2_weapon')
@@ -363,8 +363,7 @@ class Profile(commands.Cog):
             'squad': 'squad'
         }
 
-        column = field_to_column.get(field)
-        if column:
+        if column := field_to_column.get(field):
             query = f"UPDATE profiles SET {column} = NULL WHERE id=$1;"
             await ctx.db.execute(query, ctx.author.id)
             return await ctx.send(f'Successfully deleted {field} field.')
@@ -422,7 +421,7 @@ class Profile(commands.Cog):
         data = defaultdict(list)
         for record in records:
             for key, value in record.items():
-                data[key].append(value if value else 'N/A')
+                data[key].append(value or 'N/A')
 
         for key, value in data.items():
             e.add_field(name=key, value='\n'.join(value))
@@ -457,7 +456,7 @@ class Profile(commands.Cog):
 
         # top 3 weapons
         value = f'*{total_weapons} players with weapons*\n' + \
-               '\n'.join(f'{r["Weapon"]} ({r["Total"]} players)' for r in weapons[:3])
+                   '\n'.join(f'{r["Weapon"]} ({r["Total"]} players)' for r in weapons[:3])
         e.add_field(name='Top Splatoon 2 Weapons', value=value, inline=False)
 
         # get ranked data
